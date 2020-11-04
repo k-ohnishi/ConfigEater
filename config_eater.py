@@ -214,3 +214,55 @@ class CatalystL3(StructuredText):
 
     def vlan(self, match, spine):
         self.vlans.extend(self.vlanlist_to_list(match.group("vlans")))
+
+    def interfaces_csv(self, headers=False):
+        lines = []
+        if headers:
+            lines.append("hostname,interface,vlan,unassigned")
+        for t in self.interfaces:
+            for t2 in t["vlans"]:
+                lines.append("{},{},{},{}".format(self.name, t["name"], t2, t2 in self.unassigned_vlans))
+        return "\n".join([str(x) for x in lines]) + "\n"
+
+    def vlans_csv(self, headers=False):
+        lines = []
+        if headers:
+            lines.append("hostname,vlan,unused")
+        for t in self.vlans:
+            lines.append("{},{},{}".format(self.name, t, t in self.unused_vlans))
+        return "\n".join([str(x) for x in lines]) + "\n"
+        
+
+if __name__=="__main__":
+    import sys
+    import glob
+    import pickle
+    import pdb
+
+    pickle_fn = "config_eater.save"
+    # load files and create instances from specified directory
+    data = []
+    if len(sys.argv) >= 1:
+        print(sys.argv)
+        for t in sys.argv[1:]:
+            files = glob.glob(t)
+            for fn in files:
+                print(fn)
+                # todo file-class mapping
+                data.append(CatalystL3(filename=fn))
+        with open(pickle_fn, "wb") as f:
+            pickle.dump(data, f)
+    else:
+        data = pickle.load(pickle_fn)
+
+    # dump interfaces
+    with open("interfaces.csv", "w") as f:
+        for t in data:
+            f.write(t.interfaces_csv())
+
+    # dump vlans
+    with open("vlans.csv", "w") as f:
+        for t in data:
+            f.write(t.interfaces_csv())
+
+
