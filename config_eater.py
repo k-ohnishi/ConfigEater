@@ -38,6 +38,7 @@ class TreeItem(object):
     def __str__(self):
         return str(self.value)
 
+
 class StructuredText(object):
     def __init__(self, filename=None, lines=None):
         self.__lines = None
@@ -55,7 +56,7 @@ class StructuredText(object):
             with open(filename, "r") as f:
                 self.__lines = f.readlines()
             for i, t in enumerate(self.__lines):
-                self.__lines[i] = t.replace('\r', '').replace('\n', '')
+                self.__lines[i] = t.replace("\r", '').replace("\n", '')
             self.origin = filename
         self.forest = None
         self.re_root = re.compile('^(?P<value>[^\s]+.*)$')
@@ -71,7 +72,11 @@ class StructuredText(object):
         branch_stack = []
         for i, t in enumerate(self.__lines):
             print("branch_stack: " + str(branch_stack))
-            print("i: {}, t: {}".format(i, t))
+            print("i: {}, t: \"{}\"".format(i, t))
+            if t == "":
+                d.append(TreeItem({"line": i, "value": "", "blanks": ""}, is_root=True))
+                continue
+            
             g = self.re_root.match(t)
             if g:
                 d.append(TreeItem({"line": i, "value": g.group("value"), "blanks": ""}, is_root=True))
@@ -166,8 +171,10 @@ class CatalystL3(StructuredText):
                     v["analyzer"](m, t)
         used_vlans = set()
         for t in self.interfaces:
-            used_vlans |= set(t["swithcport trunk vlan"])
+            used_vlans |= set(t["vlans"])
         self.used_vlans = sorted(list(used_vlans))
+        self.unused_vlans = sorted(set(self.vlans) - set(self.used_vlans))
+        self.unassigned_vlans = sorted(set(self.used_vlans) - set(self.vlans))
 
     def hostname(self, match, spine):
         self.name = match.group("hostname")
@@ -190,9 +197,10 @@ class CatalystL3(StructuredText):
 
     def interface(self, match, spine):
         parser = {
-            "swithcport trunk vlan": {"re": re.compile("^(?P<type>switchport trunk allowed vlan )(?P<values>.*)$"), "type": "vlan"},
+            "swithcport trunk allowed vlan": {"re": re.compile("^(?P<type>switchport trunk allowed vlan )(?P<values>.*)$"), "type": "vlan"},
             "swithcport access vlan": {"re": re.compile("^(?P<type>switchport access vlan )(?P<values>.*)$"), "type": "vlan"},
             "switchport mode": {"re": re.compile("^(?P<type>switchport mode )(?P<values>.*)$"), "type": "mode"},
+            # vrf
             "shutdown": {"re": re.compile("^(?P<values>(no |)shutdown)$"), "type": "shut"},
             }
         d = {}
@@ -210,6 +218,13 @@ class CatalystL3(StructuredText):
                     else:
                         d[k] = g["values"]
         d["name"] = match.group("int_name")
+        if "swithcport trunk allowed vlan" in d:
+            d["vlans"] = d["swithcport trunk allowed vlan"]
+        elif "swithcport access vlan" in d:
+            d["vlans"] = [d["swithcport access vlan"]]
+        else:
+            d["vlans"] = [] # means default
+            
         self.interfaces.append(d)
 
     def vlan(self, match, spine):
@@ -231,8 +246,8 @@ class CatalystL3(StructuredText):
         for t in self.vlans:
             lines.append("{},{},{}".format(self.name, t, t in self.unused_vlans))
         return "\n".join([str(x) for x in lines]) + "\n"
-        
-
+    
+    
 if __name__=="__main__":
     import sys
     import glob
@@ -264,5 +279,6 @@ if __name__=="__main__":
     with open("vlans.csv", "w") as f:
         for t in data:
             f.write(t.interfaces_csv())
+
 
 
